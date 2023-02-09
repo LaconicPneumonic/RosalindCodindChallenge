@@ -1,4 +1,6 @@
 from collections import defaultdict
+import functools
+import multiprocessing
 
 
 rnaCodonMapping = {'UUU': 'F',
@@ -67,6 +69,7 @@ rnaCodonMapping = {'UUU': 'F',
                    'GGG': 'G'}
 
 
+UPPER_BOUND = 1_000_000
 originalProteinString = "MWNGPTEDLWRMHQNWAGTFYNSRQQPMNRIACHQLEKYTDFEDDTNCSCNCSLTCAVSRYAFGDIMGTWWDQGPRQIVSMGVVPGRASCGGRLEARGGYQRELCRYVGMKGDVMWRVMMWIATRFTKGGERTCHHRQTPDCADPRRRGEPDIFWIPPNTGQKNIHMVRWHSAFWLPYFKIETQFMDAVPFMAAYMSNSYFAVAFHHYQFDMNTKRLHCAMDLHHTICVTRSIMGFLHNSSNDDYAWQKQLGWWDCNCYAITNRPENTNFLGPVQWMDQSFPRCLNIEKFKQARIENCELEYFILWGEQWPFNVPYPMNTNGGNSYSRTKKADTMKFVFYQPMFAPWFYSQFVRTMIFSTLQAPPSMGQIIERFPHWAGCDMVDHIPNSEFYRWTMKTWVNLGFYQGTKDCWDYGTGHMVARKYDINQQEGGPYMDYSSQKLIELYFIWMMCKVPWKHREIVYHHIFFKTTAECNAFKAFHRAMGDYRDCLVCKFWLCQISLFRLCKEAVFIHHEHITTHDSPTSIWSDVRHFINFWWTCTYEKPFKKNHAKPAKLQNMIDFYERIWEMSMEMNMDVETICDIEFHVTSESSNSPCGLVVGWREDLAKEQQIQNKSPCGSAGQFYMPHISSAWEITNFMMDDTYVVGFKKDQQMVGKYVFVKWGGPWISHNPLDCICNGMEKGDSLCTWLSDNLWFYHGAFHLLCMASGSTEGVHLGLAEFRYRWNHQYVGQLFTICYKESHMDYTKGFAVFMAMMTSSVKRVARMLDWFQHRMMYSRIWYYEAHDTPQAIPSCADKMHIQTIMCLYTLYHEPMDPNHRSKICTWPHMYMTYYFTREMLEKQFYWFLGKATAPWTEQIIVYWHAWDMVPANCWDMQPCQFYEQDFKSKCYTFQGQYFHPCTLLYAPVQNKATSPCLDCQTIRCDNNVRRCSIRETEWEDIYCAHACCVIMNWSLYCMLIQDYRQPAWEQFWNPMIYGCSSFFTFHYGNVDRSHCPPAAH"
 proteinToRnaCount = defaultdict(int)
 
@@ -75,11 +78,42 @@ for key, val in rnaCodonMapping.items():
     proteinToRnaCount[val] += 1
 
 
-ret = 1
+def computePossibleRna(proteinString, start, stop):
 
-for protein in originalProteinString:
+    ret = 1
 
-    ret = (ret * proteinToRnaCount[protein]) % 1_000_000
+    for protein in proteinString[start: stop]:
+
+        ret = (ret * proteinToRnaCount[protein]) % UPPER_BOUND
+
+    return ret
 
 
-print(ret * proteinToRnaCount['Stop'] % 1_000_000)
+def computePossibleRnaParallel(proteinString):
+
+    proccesses = multiprocessing.cpu_count()
+
+    windowSize = len(proteinString) // proccesses
+    remainder = len(proteinString) % proccesses
+
+    ret = []
+
+    for i in range(proccesses):
+
+        shift = min(remainder, i)
+
+        ret.append((proteinString, i * windowSize + shift, (i + 1) * windowSize +
+                    shift + (1 if i < remainder else 0)))
+
+    with multiprocessing.Pool(processes=proccesses) as pool:
+
+        separateResults = pool.starmap(computePossibleRna, ret)
+
+        preStopCodon = functools.reduce(lambda agg, curr: (
+            agg * curr) % UPPER_BOUND, separateResults)
+
+        print(preStopCodon * proteinToRnaCount['Stop'] % UPPER_BOUND)
+
+
+if __name__ == '__main__':
+    computePossibleRnaParallel(originalProteinString)
